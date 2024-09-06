@@ -88,7 +88,6 @@ class AgentConfig(FrozenSerializable):
         "vim",
         "emacs",
         "nano",
-        "su",
     )
     # Should extract environment state in a json readable form
     state_command: Command = Command(

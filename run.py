@@ -225,7 +225,7 @@ class SaveApplyPatchHook(MainHook):
         patch_output_dir = self._traj_dir / "patches"
         patch_output_dir.mkdir(exist_ok=True, parents=True)
         patch_output_file = patch_output_dir / f"{instance_id}.patch"
-        if info.get("submission") is None:
+        if not info.get("submission"):
             logger.info("No patch to save.")
             return None
         model_patch = info["submission"]
@@ -333,45 +333,48 @@ class Main:
     def run(self, index):
         # Reset environment
         instance_id = self.env.data[index]["instance_id"]
-        for hook in self.hooks:
-            hook.on_instance_start(index=index, instance=self.env.data[index])
-        assert isinstance(instance_id, str)  # mypy
-        if self.should_skip(instance_id):
+        import weave
+        with weave.attributes({'weave_task_id': instance_id}):
             for hook in self.hooks:
-                hook.on_instance_skipped()
-            raise _ContinueLoop
-        logger.info("▶️  Beginning task " + str(index))
+                hook.on_instance_start(index=index, instance=self.env.data[index])
+            assert isinstance(instance_id, str)  # mypy
+            if self.should_skip(instance_id):
+                for hook in self.hooks:
+                    hook.on_instance_skipped()
+                raise _ContinueLoop
+            logger.info("▶️  Beginning task " + str(index))
 
-        observation, info = self.env.reset(index)
-        if info is None:
-            raise _ContinueLoop
+            observation, info = self.env.reset(index)
+            print(observation)
+            if info is None:
+                raise _ContinueLoop
 
-        # Get info, patch information
-        issue = getattr(self.env, "query", None)
-        files = []
-        assert self.env.record is not None  # mypy
-        if "patch" in self.env.record:
-            files = "\n".join([f"- {x.path}" for x in PatchSet(self.env.record["patch"]).modified_files])
-        # Get test files, F2P tests information
-        test_files = []
-        if "test_patch" in self.env.record:
-            test_patch_obj = PatchSet(self.env.record["test_patch"])
-            test_files = "\n".join([f"- {x.path}" for x in test_patch_obj.modified_files + test_patch_obj.added_files])
-        tests = ""
-        if "FAIL_endTO_PASS" in self.env.record:
-            tests = "\n".join([f"- {x}" for x in self.env.record["FAIL_TO_PASS"]])
+            # Get info, patch information
+            issue = getattr(self.env, "query", None)
+            files = []
+            assert self.env.record is not None  # mypy
+            if "patch" in self.env.record:
+                files = "\n".join([f"- {x.path}" for x in PatchSet(self.env.record["patch"]).modified_files])
+            # Get test files, F2P tests information
+            test_files = []
+            if "test_patch" in self.env.record:
+                test_patch_obj = PatchSet(self.env.record["test_patch"])
+                test_files = "\n".join([f"- {x.path}" for x in test_patch_obj.modified_files + test_patch_obj.added_files])
+            tests = ""
+            if "FAIL_endTO_PASS" in self.env.record:
+                tests = "\n".join([f"- {x}" for x in self.env.record["FAIL_TO_PASS"]])
 
-        setup_args = {"issue": issue, "files": files, "test_files": test_files, "tests": tests}
-        info, trajectory = self.agent.run(
-            setup_args=setup_args,
-            env=self.env,
-            observation=observation,
-            traj_dir=self.traj_dir,
-            return_type="info_trajectory",
-        )
-        self._save_predictions(instance_id, info)
-        for hook in self.hooks:
-            hook.on_instance_completed(info=info, trajectory=trajectory)
+            setup_args = {"issue": issue, "files": files, "test_files": test_files, "tests": tests}
+            info, trajectory = self.agent.run(
+                setup_args=setup_args,
+                env=self.env,
+                observation=observation,
+                traj_dir=self.traj_dir,
+                return_type="info_trajectory",
+            )
+            self._save_predictions(instance_id, info)
+            for hook in self.hooks:
+                hook.on_instance_completed(info=info, trajectory=trajectory)
 
     def main(self):
         for hook in self.hooks:
@@ -522,5 +525,43 @@ def main(args: ScriptArguments):
     Main(args).main()
 
 
+### AGENT RUN FUNCTIONS ###
+
+def run_swebench_gpt_4o_mini_c4(input):
+
+    # get path of this file
+    path = Path(__file__).resolve().parent / "input.json"
+    # write the input to json file
+    with open(path, "w") as f:
+        json.dump(input, f)
+
+    args = get_args(['--model_name', 'gpt-4o-mini-2024-07-18', '--data_path', str(path), '--per_instance_cost_limit', '1', '--skip_existing', 'False'])
+    main(args)
+
+    # delete the input file
+    import os
+    os.remove(path)
+
+    # # load all_preds.jsonl file in trajectories and add key data to input
+    with open(Path("trajectories") / Path(getuser()) / 'gpt-4o-mini-2024-07-18__input__default__t-0.00__p-0.95__c-1.00__install-1' / 'all_preds.jsonl', "r") as f:
+        data = list(f)
+
+    # for each instance_id in input dict, find the corresponding prediction in data
+    # and add it to the input dict
+    for i, instance in enumerate(input):
+        for line in data:
+            line = json.loads(line)
+            if instance['instance_id'] == line['instance_id']:
+                instance['model_name_or_path'] = line['model_name_or_path']
+                instance['model_patch'] = line['model_patch']
+                break
+            instance['model_name_or_path'] = 'gpt-4o-mini-2024-07-18__input__default__t-0.00__p-0.95__c-1.00__install-1'
+            instance['model_patch'] = 'No patch returned'
+
+    return input
+
+
+
 if __name__ == "__main__":
-    main(get_args())
+    print(get_args().agent.per_instance_cost_limit)
+    # main(get_args())

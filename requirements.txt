@@ -19,4 +19,3 @@ rich-argparse
 flask
 flask-cors
 flask-socketio
-groq
