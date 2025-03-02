@@ -115,7 +115,7 @@ class ScriptArguments(FlattenedAccess, FrozenSerializable):
     def run_name(self) -> str:
         """Generate a unique name for this run based on the arguments."""
         model_name = self.agent.model.model_name.replace(":", "-")
-        data_stem = get_data_path_name(self.environment.data_path)
+        data_stem = get_data_path_name(self.environment.data_path, ctf=self.ctf)
         assert self.agent.config_file is not None  # mypy
         config_stem = Path(self.agent.config_file).stem
 
@@ -522,7 +522,7 @@ def get_args(args=None) -> ScriptArguments:
 
     # Nicer yaml dumping of multiline strings
     def multiline_representer(dumper, data):
-        """configures yaml for dumping multiline strings
+        """configures yaml  for dumping multiline strings
         Ref: https://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
         """
         if data.count("\n") > 0:  # check for multiline string

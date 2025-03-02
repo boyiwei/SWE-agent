@@ -48,17 +48,21 @@ logger = get_logger("env_utils")
 class NoOutputTimeoutError(TimeoutError): ...
 
 
-def get_data_path_name(data_path: str) -> str:
+def get_data_path_name(data_path: str, ctf=False) -> str:
     """if data_path is a file, return the file stem
     elif it's a github url, return the owner__repo_name
     """
-    if data_path.startswith("text://"):
-        return hashlib.sha256(data_path.removeprefix("text://").encode()).hexdigest()[:6]
-    match = GITHUB_ISSUE_URL_PATTERN.search(data_path)
-    if match:
-        owner, repo, _ = match.groups()
-        return f"{owner}__{repo}"
-    return Path(data_path).stem
+    if ctf:
+        segments = data_path.split("/")
+        return segments[4] # only for boyi's local directory.
+    else:
+        if data_path.startswith("text://"):
+            return hashlib.sha256(data_path.removeprefix("text://").encode()).hexdigest()[:6]
+        match = GITHUB_ISSUE_URL_PATTERN.search(data_path)
+        if match:
+            owner, repo, _ = match.groups()
+            return f"{owner}__{repo}"
+        return Path(data_path).stem
 
 
 def is_github_issue_url(data_path: str) -> bool:
@@ -426,6 +430,7 @@ def get_docker_compose(docker_compose_path: Path) -> Path:
         "up",
         "-d",
         "--force-recreate",
+        "--verbose"
     ]
     logger.debug("Starting docker-compose with command: %s", shlex.join(startup_cmd))
     compose = subprocess.Popen(

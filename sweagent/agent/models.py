@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, fields
 from pathlib import Path
-
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import together
 from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic, AnthropicBedrock
 from groq import Groq
@@ -46,6 +46,8 @@ class ModelArguments(FrozenSerializable):
     replay_path: str | None = None
     # Host URL when using Ollama model
     host_url: str = "localhost:11434"
+    max_input_tokens: int = 120_000
+    max_output_tokens: int = 5_000
 
 
 @dataclass
@@ -108,6 +110,9 @@ class BaseModel:
             self.model_metadata = MODELS[ft_model]
         elif args.model_name.startswith("ollama:"):
             self.api_model = args.model_name.split("ollama:", 1)[1]
+            self.model_metadata = self.MODELS[self.api_model]
+        elif args.model_name.startswith("local:"):
+            self.api_model = args.model_name.split("local:", 1)[1]
             self.model_metadata = self.MODELS[self.api_model]
         elif args.model_name.startswith("azure:"):
             azure_model = args.model_name.split("azure:", 1)[1]
@@ -820,7 +825,16 @@ class TogetherModel(BaseModel):
         # Perform Together API call
         prompt = self.history_to_messages(history)
         # Anthropic's count_tokens is convenient because it caches and utilizes huggingface/tokenizers, so we will use.
-        max_tokens_to_sample = self.model_metadata["max_context"] - Anthropic().count_tokens(prompt)
+        tokenizer = AutoTokenizer.from_pretrained(self.api_model)
+        # tokenized_input = tokenizer(prompt, return_tensors="pt")
+        # breakpoint()
+        tokenized_input = tokenizer.apply_chat_template(
+                prompt,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors='pt'
+            )
+        max_tokens_to_sample = self.model_metadata["max_context"] - tokenized_input.input_ids.size(1) #TODO(wby) This is a temporary fix to avoid going over the token limit. We should customize the token count based on different models.
         completion = together.Complete.create(
             model=self.api_model,
             prompt=prompt,
@@ -987,6 +1001,127 @@ class InstantEmptySubmitTestModel(BaseModel):
         return action
 
 
+class LocalModel(BaseModel):
+    MODELS = {
+        "Qwen2.5-Coder-32B-Instruct": {
+            "max_context": 128000,
+            "cost_per_input_token": 5e-07,
+            "cost_per_output_token": 5e-07,
+        },
+    }
+
+    SHORTCUTS = {}
+
+    def __init__(self, args: ModelArguments, commands: list[Command]):
+        super().__init__(args, commands)
+
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
+        self._setup_client()
+    
+    def _truncate_input_to_max_tokens(self, tokenizer, model_input: str, system_prompt: str) -> str:
+        num_input_tokens = len(tokenizer(model_input).input_ids)
+        num_system_prompt_tokens = len(tokenizer(system_prompt).input_ids)
+        remaining_input = model_input[len(system_prompt) + 17:] # TODO(wby) only useful for qwen model, here +17 means we remove <|im_start|>user\n at the beginning<
+        truncation_alert = "\n...TRUNCATED...\n"
+        num_tokens_in_truncation_alert = len(tokenizer(truncation_alert).input_ids) #self._get_num_tokens(truncation_alert)
+        
+        truncated_tokens = tokenizer(remaining_input).input_ids
+        if num_input_tokens  >= self.args.max_input_tokens - num_tokens_in_truncation_alert - num_system_prompt_tokens:
+            print(f"Number of input tokens ({num_input_tokens}) exceeds max tokens ({self.args.max_input_tokens}). Truncating input.")
+            tokens = tokenizer(remaining_input).input_ids
+            tokens_to_keep = self.args.max_input_tokens - num_tokens_in_truncation_alert
+            half_tokens_to_keep = tokens_to_keep // 2
+            beginning_tokens = tokens[:half_tokens_to_keep]
+            end_tokens = tokens[-half_tokens_to_keep:]
+            truncated_tokens = (
+                beginning_tokens + tokenizer(truncation_alert).input_ids + end_tokens
+            )
+        
+        truncated_input = tokenizer.decode(truncated_tokens)[:-11] # TODO(wby) only useful for qwen model, here -11 means we remove <im_end>\n at the end
+        return truncated_input
+    
+    
+    def _setup_client(self):
+        api_base_url: str | None = keys_config.get("OPENAI_API_BASE_URL", None)
+        self.client = OpenAI(api_key="token-abc123", base_url=f"http://10.0.0.5:6791/v1")
+        # self.client = OpenAI(api_key=keys_config["OPENAI_API_KEY"], base_url=api_base_url)
+
+    def history_to_messages(
+        self,
+        history: list[dict[str, str]],
+        is_demonstration: bool = False,
+    ) -> str | list[dict[str, str]]:
+        """
+        Create `messages` by filtering out all keys except for role/content per `history` turn
+        """
+        # Remove system messages if it is a demonstration
+        if is_demonstration:
+            history = [entry for entry in history if entry["role"] != "system"]
+            return "\n".join([entry["content"] for entry in history])
+        # Return history components with just role, content fields
+        return [{k: v for k, v in entry.items() if k in ["role", "content"]} for entry in history]
+
+    @retry(
+        wait=wait_random_exponential(min=1, max=15),
+        reraise=True,
+        stop=stop_after_attempt(_MAX_RETRIES),
+        retry=retry_if_not_exception_type((CostLimitExceededError, RuntimeError)),
+    )
+    def query(self, history: list[dict[str, str]]) -> str:
+        """
+        Query the OpenAI API with the given `history` and return the response.
+        """
+        prompt = self.history_to_messages(history)
+        # breakpoint()
+        # Anthropic's count_tokens is convenient because it caches and utilizes huggingface/tokenizers, so we will use.
+        if 'Qwen2.5' in self.api_model:
+            tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+        
+        formatted_input = tokenizer.apply_chat_template(
+                prompt,
+                tokenize=False,
+                add_generation_prompt=False
+            )
+        formatted_system_prompt = tokenizer.apply_chat_template(
+            [prompt[0]],
+            tokenize=False,
+            add_generation_prompt=False
+        )
+        # TODO truncation without system prompt
+        
+        truncated_input = self._truncate_input_to_max_tokens(tokenizer, formatted_input, formatted_system_prompt).rstrip() # skipping special tokens cannot remove the last \n
+        
+        # tokenized_input = tokenizer(prompt, return_tensors="pt")
+        # breakpoint()
+        # max_tokens_to_sample = self.model_metadata["max_context"] - tokenized_input.size(1)
+        try:
+            # Perform OpenAI API call
+            #TODO(wby) Add max token limit to the local model
+            response = self.client.chat.completions.create(
+                messages=[prompt[0], {"role": "user", "content": truncated_input}], #here prompt[0] is the system message
+                model=self.api_model,
+                max_tokens=self.args.max_output_tokens,
+                temperature=self.args.temperature,
+                top_p=self.args.top_p,
+            )
+        except BadRequestError as e:
+            logger.exception("BadRequestError")
+            if "context window" in str(e) or getattr(e, "error", {}).get("code") == "context_length_exceeded":
+                msg = f"Context window ({self.model_metadata['max_context']} tokens) exceeded"
+                raise ContextWindowExceededError(msg) from e
+            else:
+                raise e
+        # Calculate + update costs, return response
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+        self.update_stats(input_tokens, output_tokens)
+        return response.choices[0].message.content
+
+
+
+
 def get_model(args: ModelArguments, commands: list[Command] | None = None):
     """
     Returns correct model object given arguments and commands
@@ -1020,6 +1155,8 @@ def get_model(args: ModelArguments, commands: list[Command] | None = None):
         return TogetherModel(args, commands)
     elif args.model_name in GroqModel.SHORTCUTS:
         return GroqModel(args, commands)
+    elif args.model_name in LocalModel.MODELS:
+        return LocalModel(args, commands)
     elif args.model_name == "instant_empty_submit":
         return InstantEmptySubmitTestModel(args, commands)
     else:
