@@ -5,6 +5,7 @@ from getpass import getuser
 
 ### AGENT RUN FUNCTIONS ###
 
+
 def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     # SWE agent can only run on swebench
     assert 'model_name' in kwargs, 'model_name is required'
@@ -48,6 +49,7 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
         data = list(f)
     model_name_or_path = traj_dir.split('/')[-2]
     print(model_name_or_path)
+
     for i, instance in enumerate(input):
         for line in data:
             line = json.loads(line)
@@ -55,6 +57,7 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
                 instance['model_name_or_path'] = line['model_name_or_path']
                 instance['model_patch'] = line['model_patch']
                 break
+
             instance['model_name_or_path'] = model_name_or_path
             instance['model_patch'] = 'No patch returned'
 

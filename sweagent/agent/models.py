@@ -265,9 +265,21 @@ class OpenAIModel(BaseModel):
                 azure_endpoint=keys_config["AZURE_OPENAI_ENDPOINT"],
                 api_version=keys_config.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
             )
+        elif "gpt" not in self.args.model_name:
+            
+            if self.args.model_name == "meta-llama/Meta-Llama-3.1-8B-Instruct":
+                api_base_url = "http://localhost:6789/v1"
+            elif self.args.model_name == "meta-llama/Meta-Llama-3.1-70B-Instruct":
+                api_base_url = "http://localhost:6778/v1"
+            else:
+                api_base_url = None
+
+            self.client = OpenAI(api_key=keys_config["OPENAI_API_KEY"], base_url=api_base_url)
         else:
             api_base_url: str | None = keys_config.get("OPENAI_API_BASE_URL", None)
             self.client = OpenAI(api_key=keys_config["OPENAI_API_KEY"], base_url=api_base_url)
+
+        
 
     def history_to_messages(
         self,
