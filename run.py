@@ -228,7 +228,7 @@ class SaveApplyPatchHook(MainHook):
         patch_output_dir = self._traj_dir / "patches"
         patch_output_dir.mkdir(exist_ok=True, parents=True)
         patch_output_file = patch_output_dir / f"{instance_id}.patch"
-        if info.get("submission") is None:
+        if not info.get("submission"):
             logger.info("No patch to save.")
             return None
         model_patch = info["submission"]
@@ -336,56 +336,60 @@ class Main:
     def run(self, index: int) -> None:
         # Reset environment
         instance_id = self.env.data[index]["instance_id"]
-        for hook in self.hooks:
-            hook.on_instance_start(index=index, instance=self.env.data[index])
-        assert isinstance(instance_id, str)  # mypy
-        if self.should_skip(instance_id):
+        import weave
+        with weave.attributes({'weave_task_id': instance_id}):
             for hook in self.hooks:
-                hook.on_instance_skipped()
-            raise _ContinueLoop
-        logger.info("▶️  Beginning task " + str(index))
+                hook.on_instance_start(index=index, instance=self.env.data[index])
+            assert isinstance(instance_id, str)  # mypy
+            if self.should_skip(instance_id):
+                for hook in self.hooks:
+                    hook.on_instance_skipped()
+                raise _ContinueLoop
+            logger.info("▶️  Beginning task " + str(index))
 
-        observation, info = self.env.reset(index)
-        if info is None:
-            raise _ContinueLoop
+            observation, info = self.env.reset(index)
+            if info is None:
+                raise _ContinueLoop
 
-        # Get info, patch information
-        issue = getattr(self.env, "query", None)
-        files = []
-        assert self.env.record is not None  # mypy
-        if "patch" in self.env.record:
-            files = "\n".join([f"- {x.path}" for x in PatchSet(self.env.record["patch"]).modified_files])
-        # Get test files, F2P tests information
-        test_files = []
-        if "test_patch" in self.env.record:
-            test_patch_obj = PatchSet(self.env.record["test_patch"])
-            test_files = "\n".join([f"- {x.path}" for x in test_patch_obj.modified_files + test_patch_obj.added_files])
-        tests = ""
-        if "FAIL_endTO_PASS" in self.env.record:
-            tests = "\n".join([f"- {x}" for x in self.env.record["FAIL_TO_PASS"]])
+            # Get info, patch information
+            issue = getattr(self.env, "query", None)
+            files = []
+            assert self.env.record is not None  # mypy
+            if "patch" in self.env.record:
+                files = "\n".join([f"- {x.path}" for x in PatchSet(self.env.record["patch"]).modified_files])
+            # Get test files, F2P tests information
+            test_files = []
+            if "test_patch" in self.env.record:
+                test_patch_obj = PatchSet(self.env.record["test_patch"])
+                test_files = "\n".join([f"- {x.path}" for x in test_patch_obj.modified_files + test_patch_obj.added_files])
+            tests = ""
+            if "FAIL_endTO_PASS" in self.env.record:
+                tests = "\n".join([f"- {x}" for x in self.env.record["FAIL_TO_PASS"]])
 
-        setup_args = {"issue": issue, "files": files, "test_files": test_files, "tests": tests}
-        challenge = self.env.challenge
-        if challenge is not None:
-            setup_args["flag_format"] = extract_flag_format(challenge["flag"])
-            setup_args["name"] = challenge["name"]
-            setup_args["description"] = challenge["description"]
-            setup_args["category_friendly"] = challenge["category_friendly"]
-            setup_args["points"] = challenge["points"]
-            setup_args["files"] = challenge["files"] or "No files included in this challenge."
-            setup_args["box"] = challenge.get("server_name")
-            setup_args["port"] = challenge.get("port")
-            setup_args["server_description"] = challenge.get("server_description")
-        info, trajectory = self.agent.run(
-            setup_args=setup_args,
-            env=self.env,
-            observation=observation,
-            traj_dir=self.traj_dir,
-            return_type="info_trajectory",
-        )
-        self._save_predictions(instance_id, info, challenge)
-        for hook in self.hooks:
-            hook.on_instance_completed(info=info, trajectory=trajectory)
+            setup_args = {"issue": issue, "files": files, "test_files": test_files, "tests": tests}
+            
+            
+            challenge = self.env.challenge
+            if challenge is not None:
+                setup_args["flag_format"] = extract_flag_format(challenge["flag"])
+                setup_args["name"] = challenge["name"]
+                setup_args["description"] = challenge["description"]
+                setup_args["category_friendly"] = challenge["category_friendly"]
+                setup_args["points"] = challenge["points"]
+                setup_args["files"] = challenge["files"] or "No files included in this challenge."
+                setup_args["box"] = challenge.get("server_name")
+                setup_args["port"] = challenge.get("port")
+                setup_args["server_description"] = challenge.get("server_description")
+            info, trajectory = self.agent.run(
+                setup_args=setup_args,
+                env=self.env,
+                observation=observation,
+                traj_dir=self.traj_dir,
+                return_type="info_trajectory",
+            )
+            self._save_predictions(instance_id, info, challenge)
+            for hook in self.hooks:
+                hook.on_instance_completed(info=info, trajectory=trajectory)
 
     def main(self):
         for hook in self.hooks:
@@ -546,4 +550,5 @@ def main(args: ScriptArguments):
 
 
 if __name__ == "__main__":
-    main(get_args())
+    # main(get_args())
+    print(get_args().agent.per_instance_cost_limit)
