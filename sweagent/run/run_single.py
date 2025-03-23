@@ -190,7 +190,7 @@ class RunSingle:
         output_dir.mkdir(parents=True, exist_ok=True)
         if self.agent.replay_config is not None:  # type: ignore[attr-defined]
             (output_dir / "config.yaml").write_text(yaml.dump(self.agent.replay_config.model_dump_json(), indent=2))  # type: ignore[attr-defined]
-        result = self.agent.run(
+        result, traj_path = self.agent.run(
             problem_statement=self.problem_statement,
             env=self.env,
             output_dir=output_dir,
@@ -200,10 +200,11 @@ class RunSingle:
         self._chooks.on_end()
         save_predictions(self.output_dir, self.problem_statement.id, result)
         self.env.close()
+        return traj_path
 
 
 def run_from_config(config: RunSingleConfig):
-    RunSingle.from_config(config).run()
+    return RunSingle.from_config(config).run()
 
 
 def run_from_cli(args: list[str] | None = None):
@@ -213,8 +214,7 @@ def run_from_cli(args: list[str] | None = None):
     help_text = (  # type: ignore
         __doc__ + "\n[cyan][bold]=== ALL THE OPTIONS ===[/bold][/cyan]\n\n" + ConfigHelper().get_help(RunSingleConfig)
     )
-    run_from_config(BasicCLI(RunSingleConfig, help_text=help_text).get_config(args))  # type: ignore
-
+    return run_from_config(BasicCLI(RunSingleConfig, help_text=help_text).get_config(args))  # type: ignore
 
 if __name__ == "__main__":
     run_from_cli()

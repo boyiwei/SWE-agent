@@ -84,7 +84,8 @@ def main(args: list[str] | None = None):
     if command in ["run", "r"]:
         from sweagent.run.run_single import run_from_cli as run_single_main
 
-        run_single_main(remaining_args)
+        traj_path = run_single_main(remaining_args)
+        print(f"Trajectory saved to: {traj_path}")
     elif command in ["run-batch", "b"]:
         from sweagent.run.run_batch import run_from_cli as run_batch_main
 

@@ -1234,4 +1234,4 @@ class DefaultAgent(AbstractAgent):
         # Here we want to return the "global" information (e.g., submission should
         # be the best submission instead of the last one, etc.), so we get it from the traj file
         data = self.get_trajectory_data()
-        return AgentRunResult(info=data["info"], trajectory=data["trajectory"])
+        return AgentRunResult(info=data["info"], trajectory=data["trajectory"]), self.traj_path
