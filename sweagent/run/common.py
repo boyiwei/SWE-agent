@@ -366,7 +366,8 @@ def save_predictions(traj_dir: Path, instance_id: str, result: AgentRunResult):
     datum = {
         "model_name_or_path": traj_dir.name,
         "instance_id": instance_id,
-        "model_patch": result.info.get("submission"),
+        # "model_patch": result.info.get("submission"),
+        "model_patch": result[0].info.get("submission"), # wby: temp fix
     }
     output_file.write_text(json.dumps(datum))
 
