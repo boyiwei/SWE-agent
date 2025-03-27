@@ -321,7 +321,7 @@ class RunBatch:
                 raise
         else:
             self._progress_manager.on_instance_end(
-                instance.problem_statement.id, exit_status=result.info.get("exit_status", "unknown_exit")
+                instance.problem_statement.id, exit_status=result[0].info.get("exit_status", "unknown_exit")
             )
         finally:
             self._progress_manager.update_exit_status_table()

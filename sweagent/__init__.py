@@ -102,7 +102,7 @@ def impose_rex_lower_bound() -> None:
 
 
 impose_rex_lower_bound()
-get_logger("swe-agent", emoji="👋").info(get_agent_version_info())
+get_logger("swe-agent", emoji="👋").info("1.0")
 
 
 __all__ = [

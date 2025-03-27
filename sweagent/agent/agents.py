@@ -546,10 +546,15 @@ class DefaultAgent(AbstractAgent):
         self.tools.install(self._env)
         self._chook.on_setup_attempt()
         self.info = AgentInfo()
-        self.info["swe_agent_hash"] = get_agent_commit_hash()
+        # self.info["swe_agent_hash"] = get_agent_commit_hash()
+        # self.info["swe_agent_version"] = __version__
+        # self.info["swe_rex_version"] = get_rex_version()
+        # self.info["swe_rex_hash"] = get_rex_commit_hash()
+        self.info["swe_agent_hash"] = "000" # modified by wby. Because in HAL we don't clone .git to the tmp dir, so we can't get the commit hash
         self.info["swe_agent_version"] = __version__
         self.info["swe_rex_version"] = get_rex_version()
-        self.info["swe_rex_hash"] = get_rex_commit_hash()
+        self.info["swe_rex_hash"] = "000"
+        
         assert self._env is not None
         assert self._problem_statement is not None
         self._env.set_env_variables({"PROBLEM_STATEMENT": self._problem_statement.get_problem_statement()})

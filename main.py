@@ -11,23 +11,29 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     assert len(input) == 1, 'input must contain only one task'
     
     # Set default values for kwargs
-    kwargs['agent.model.per_instance_cost_limit'] = kwargs.get('agent.model.per_instance_cost_limit', 3.0)
+    args = {}
+    args['agent.model.name'] = kwargs['agent.model.name']
+    args['agent.model.per_instance_cost_limit'] = kwargs.get('agent.model.per_instance_cost_limit', 3.0)
     # kwargs['skip_existing'] = kwargs.get('skip_existing', 'False') # TODO(wby) find corresponding args in v1.0, by default we skip the existing trajs
-    kwargs['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
-    kwargs['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
-    kwargs['config_file'] = kwargs.get('config_file', Path(__file__).resolve().parent / "config" / "anthropic_filemap.yaml")
-    kwargs['instances.type'] = kwargs.get('instances.type', 'swe_bench')
-    kwargs['instances.subset'] = kwargs.get('instances.subset', 'verified')
-    kwargs['instances.split'] = kwargs.get('instances.split', 'test')
+    args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
+    args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
+    args['config'] = kwargs.get('config', Path(__file__).resolve().parent / "config" / "anthropic_filemap.yaml")
+    args['instances.type'] = kwargs.get('instances.type', 'swe_bench')
+    args['instances.subset'] = kwargs.get('instances.subset', 'verified')
+    args['instances.split'] = kwargs.get('instances.split', 'test')
 
 
     instance_id = list(input.keys())[0]
-    kwargs['instances.filter'] = instance_id
-
-    print(kwargs)
-    # Reference kwargs:
+    args['instances.filter'] = instance_id
     
-    output_dir = run_batch_main(kwargs)
+    # change args to cli forat
+    args_list = []
+    for k, v in args.items():
+        args_list.append(f"--{k}={v}")
+        
+    print(args_list)
+    
+    output_dir = run_batch_main(args_list)
     pred_dir = output_dir / f"{instance_id}" / f"{instance_id}.pred"
     
 
