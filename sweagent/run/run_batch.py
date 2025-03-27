@@ -250,6 +250,7 @@ class RunBatch:
         merge_predictions(output_dirs, self.output_dir / "preds.json")
 
         self._chooks.on_end()
+        return self.output_dir
 
     def main_single_worker(self) -> None:
         with ExitStack() as stack:
@@ -419,7 +420,7 @@ class RunBatch:
 
 
 def run_from_config(config: RunBatchConfig):
-    RunBatch.from_config(config).main()
+    return RunBatch.from_config(config).main()
 
 
 def run_from_cli(args: list[str] | None = None):
@@ -429,7 +430,7 @@ def run_from_cli(args: list[str] | None = None):
     help_text = (  # type: ignore
         __doc__ + "\n[cyan][bold]=== ALL THE OPTIONS ===[/bold][/cyan]\n\n" + ConfigHelper().get_help(RunBatchConfig)
     )
-    run_from_config(BasicCLI(RunBatchConfig, help_text=help_text).get_config(args))  # type: ignore
+    return run_from_config(BasicCLI(RunBatchConfig, help_text=help_text).get_config(args))  # type: ignore
 
 
 if __name__ == "__main__":

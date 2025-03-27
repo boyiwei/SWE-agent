@@ -31,7 +31,7 @@ class SaveApplyPatchHook(RunHook):
 
     def on_instance_completed(self, *, result: AgentRunResult):
         instance_id = self._problem_statement.id
-        patch_path = self._save_patch(instance_id, result.info)
+        patch_path = self._save_patch(instance_id, result[0].info)
         if patch_path:
             if not self._apply_patch_locally:
                 return

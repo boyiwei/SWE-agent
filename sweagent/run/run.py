@@ -89,7 +89,8 @@ def main(args: list[str] | None = None):
     elif command in ["run-batch", "b"]:
         from sweagent.run.run_batch import run_from_cli as run_batch_main
 
-        run_batch_main(remaining_args)
+        output_dir = run_batch_main(remaining_args)
+        print(f"Output saved to: {output_dir}")
     elif command == "run-replay":
         from sweagent.run.run_replay import run_from_cli as run_replay_main
 
