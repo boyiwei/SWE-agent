@@ -15,8 +15,12 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     args['agent.model.name'] = kwargs['agent.model.name']
     args['agent.model.per_instance_cost_limit'] = kwargs.get('agent.model.per_instance_cost_limit', 3.0)
     # kwargs['skip_existing'] = kwargs.get('skip_existing', 'False') # TODO(wby) find corresponding args in v1.0, by default we skip the existing trajs
-    args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
-    args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
+    if ("o1" in kwargs['agent.model.name'] or "o3" in kwargs['agent.model.name']): # for reasoning models, we don't need to set top_p and temperature
+        import litellm
+        litellm.drop_params = True
+    else:
+        args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
+        args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
     args['config'] = kwargs.get('config', Path(__file__).resolve().parent / "config" / "anthropic_filemap.yaml")
     args['instances.type'] = kwargs.get('instances.type', 'swe_bench')
     args['instances.subset'] = kwargs.get('instances.subset', 'verified')
