@@ -17,7 +17,12 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     # kwargs['skip_existing'] = kwargs.get('skip_existing', 'False') # TODO(wby) find corresponding args in v1.0, by default we skip the existing trajs
     if ("o1" in kwargs['agent.model.name'] or "o3" in kwargs['agent.model.name']): # for reasoning models, we don't need to set top_p and temperature
         import litellm
+        from functools import partial
         litellm.drop_params = True
+        reasoning_effort = kwargs.get('agent.model.reasoning_effort', 'medium') # available values: low, medium, high
+        print(f"Using reasoning effort: {reasoning_effort}")
+        litellm.completion = partial(litellm.completion, reasoning_effort=reasoning_effort)
+        litellm.acompletion = partial(litellm.completion, reasoning_effort=reasoning_effort)
     else:
         args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
         args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
