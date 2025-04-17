@@ -3,6 +3,8 @@ from sweagent.run.run_batch import run_from_cli as run_batch_main
 import json
 from pathlib import Path
 from getpass import getuser
+import litellm
+from functools import partial
 
 
 def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
@@ -16,20 +18,32 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     args['agent.model.per_instance_cost_limit'] = kwargs.get('agent.model.per_instance_cost_limit', 3.0)
     # kwargs['skip_existing'] = kwargs.get('skip_existing', 'False') # TODO(wby) find corresponding args in v1.0, by default we skip the existing trajs
     if ("o1" in kwargs['agent.model.name'] or "o3" in kwargs['agent.model.name']): # for reasoning models, we don't need to set top_p and temperature
-        import litellm
-        from functools import partial
         litellm.drop_params = True
         reasoning_effort = kwargs.get('agent.model.reasoning_effort', 'medium') # available values: low, medium, high
         print(f"Using reasoning effort: {reasoning_effort}")
         litellm.completion = partial(litellm.completion, reasoning_effort=reasoning_effort)
-        litellm.acompletion = partial(litellm.completion, reasoning_effort=reasoning_effort)
+        litellm.acompletion = partial(litellm.acompletion, reasoning_effort=reasoning_effort)
+    elif ("claude-3-7" in kwargs['agent.model.name']):
+        # litellm sets max_tokens as 128k by default, but the max_tokens for Claude-3-7 is 64k. See https://github.com/BerriAI/litellm/issues/8984, and https://github.com/SWE-agent/SWE-agent/blob/fa3692e87b6016651dc607e2cd28d5cc59163991/sweagent/agent/models.py#L575
+        args['agent.model.max_output_tokens'] = '64000'
+        if kwargs['agent.model.reasoning_effort']: # By default, we don't use extended thinking
+            litellm.drop_params = True
+            reasoning_effort = kwargs['agent.model.reasoning_effort']
+            print(f"Using reasoning effort: {reasoning_effort}")
+            litellm.completion = partial(litellm.completion, reasoning_effort=reasoning_effort)
+            litellm.acompletion = partial(litellm.acompletion, reasoning_effort=reasoning_effort)
+        else:
+            args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
+            args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
+    elif ("gemini-2.5" in kwargs['agent.model.name']):
+        litellm.drop_params = True
     else:
         args['agent.model.top_p'] = kwargs.get('agent.model.top_p', '0.95')
         args['agent.model.temperature'] = kwargs.get('agent.model.temperature', '0.00')
     args['config'] = kwargs.get('config', Path(__file__).resolve().parent / "config" / "anthropic_filemap.yaml")
     args['instances.type'] = kwargs.get('instances.type', 'swe_bench')
     args['instances.subset'] = kwargs.get('instances.subset', 'verified')
-    args['instances.split'] = kwargs.get('instances.split', 'test')
+    args['instances.split'] = kwargs.get('inqstances.split', 'test')
 
 
     instance_id = list(input.keys())[0]

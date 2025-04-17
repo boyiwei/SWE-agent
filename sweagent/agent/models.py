@@ -658,6 +658,8 @@ class LiteLLMModel(AbstractModel):
         completion_kwargs = self.config.completion_kwargs
         if self.lm_provider == "anthropic":
             completion_kwargs["max_tokens"] = self.model_max_output_tokens
+        if "together_ai" in self.config.name:
+            extra_args['allowed_openai_params'] = ['tools']
         try:
             response: litellm.types.utils.ModelResponse = litellm.completion(  # type: ignore
                 model=self.config.name,
