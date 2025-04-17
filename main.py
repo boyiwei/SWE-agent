@@ -43,7 +43,7 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
     args['config'] = kwargs.get('config', Path(__file__).resolve().parent / "config" / "anthropic_filemap.yaml")
     args['instances.type'] = kwargs.get('instances.type', 'swe_bench')
     args['instances.subset'] = kwargs.get('instances.subset', 'verified')
-    args['instances.split'] = kwargs.get('inqstances.split', 'test')
+    args['instances.split'] = kwargs.get('instances.split', 'test')
 
 
     instance_id = list(input.keys())[0]
