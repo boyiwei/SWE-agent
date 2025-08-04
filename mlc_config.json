@@ -17,6 +17,12 @@
     },
     {
       "pattern": "https?://(.*\\.)?x\\.com/.*"
+    },
+    {
+      "pattern": "https://linuxize.com/post/bash-heredoc/"
+    },
+    {
+      "pattern": "https://leetcode.com/problems/.*"
     }
   ]
 }

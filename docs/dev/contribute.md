@@ -34,7 +34,7 @@ pre-commit install
     Most problems (including formatting) will be automatically fixed.
     Therefore, if `pre-commit`/`git commit` fails on its first run, simply try running it a second time.
 
-    Some more autofixes can be enabled with the `--unsafe-fixes` option from [`ruff`](https://github.com/charliermarsh/ruff):
+    Some more autofixes can be enabled with the `--unsafe-fixes` option from [`ruff`](https://github.com/astral-sh/ruff):
 
     ```bash
     pipx run ruff check --fix --unsafe-fixes
@@ -96,6 +96,15 @@ pdb -m sweagent <command> -- <more command line arguments> # (1)!
 1. Note the `--` before the options passed to sweagent. This is to separate
   options passed to `pdb` from those that are passed to `sweagent`.
 
+
+When working on a test that fails, you can use
+
+```
+pytest -k name_of_test -s --capture=no --log-cli-level=DEBUG
+```
+
+to see all debug output from the agent.
+
 ## Tips for pull requests
 
 * If you see a lot of formatting-related merge conflicts, please see [here](formatting_conflicts.md).
@@ -106,7 +115,7 @@ pdb -m sweagent <command> -- <more command line arguments> # (1)!
   However, if you make the behavior optional without complicating SWE-agent (for example by providing new [commands](../config/tools.md)),
   we might be less strict.
 * Please add simple unit tests or integration tests wherever possible. Take a look in the [tests directory](https://github.com/SWE-agent/SWE-agent/tree/main/tests)
-  for inspiration. We emphasize simple easy-tow-rite tests that get a lot of coverage.
+  for inspiration. We emphasize simple easy-to-write tests that get a lot of coverage.
 
 [gfi]: https://github.com/SWE-agent/SWE-agent/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22%F0%9F%91%8B+good+first+issue%22+
 [help_wanted]: https://github.com/SWE-agent/SWE-agent/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22%F0%9F%99%8F+help+wanted%22

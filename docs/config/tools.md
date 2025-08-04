@@ -1,5 +1,9 @@
 # Configuring tools
 
+!!! seealso "Tutorials"
+
+    See the [tutorial on adding a new tool](../usage/adding_custom_tools.md)!
+
 Tools are one one of the ways to configure and extend the agent.
 
 Typically, there is
@@ -44,7 +48,7 @@ The `state` command is a special command that is executed after every action and
 The resulting dictionary can be used to format prompt templates.
 For example, for the classical SWE-agent tools, we extract the working directory and the currently open file like so:
 
-```python title="tools/defaults/bin/_state"
+```python title="tools/windowed/bin/_state"
 #!/usr/bin/env python3
 
 import json
