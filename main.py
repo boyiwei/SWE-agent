@@ -61,6 +61,7 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
             if 'agent.model.reasoning_effort' in kwargs:
                 # Set temperature to 1 for reasoning calls
                 completion_kwargs['temperature'] = 1.0
+                completion_kwargs['top_p'] = None # anthropic prohibits passing top_p for reasoning calls
                 
                 if 'openrouter/' in kwargs['agent.model.name']:
                     # For OpenRouter, add reasoning to extra_body
@@ -89,6 +90,7 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
             if 'agent.model.reasoning_effort' in kwargs:
                 # Set temperature to 1 for reasoning calls
                 completion_kwargs['temperature'] = 1.0
+                completion_kwargs['top_p'] = None
                 
                 if 'openrouter/' in kwargs['agent.model.name']:
                     # For OpenRouter, add reasoning to extra_body
