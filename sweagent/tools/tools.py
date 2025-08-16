@@ -1,5 +1,13 @@
+"""
+This module contains the configuration for the tools that are made available to the agent.
+
+The `ToolConfig` class is used to configure the tools that are available to the agent.
+The `ToolHandler` class is used to handle the tools that are available to the agent.
+"""
+
 import asyncio
 import json
+import os
 import re
 from functools import cached_property
 from pathlib import Path
@@ -19,7 +27,13 @@ from sweagent.utils.log import get_logger
 
 
 class ToolFilterConfig(BaseModel):
+    """Filter out commands that are blocked by the environment
+    (for example interactive commands like `vim`).
+    """
+
     blocklist_error_template: str = "Operation '{{action}}' is not supported by this environment."
+    """The error template to use when a command is blocked."""
+
     blocklist: list[str] = [
         "vim",
         "vi",
@@ -33,6 +47,7 @@ class ToolFilterConfig(BaseModel):
         "make",
     ]
     """Block any command that starts with one of these"""
+
     blocklist_standalone: list[str] = [
         "python",
         "python3",
@@ -49,6 +64,7 @@ class ToolFilterConfig(BaseModel):
         "su",
     ]
     """Block any command that matches one of these exactly"""
+
     block_unless_regex: dict[str, str] = {
         "radare2": r"\b(?:radare2)\b.*\s+-c\s+.*",
         "r2": r"\b(?:radare2)\b.*\s+-c\s+.*",
@@ -57,10 +73,32 @@ class ToolFilterConfig(BaseModel):
 
 
 class ToolConfig(BaseModel):
-    filter: ToolFilterConfig = ToolFilterConfig()
-    bundles: list[Bundle] = Field(default_factory=list)
+    """Configuration for the tools that are made available to the agent."""
 
-    env_variables: dict[str, Any] = {}
+    filter: ToolFilterConfig = ToolFilterConfig()
+    """Filter out commands that are blocked by the environment
+    (for example interactive commands like `vim`).
+    """
+
+    bundles: list[Bundle] = Field(default_factory=list)
+    """The tool bundles to load."""
+
+    propagate_env_variables: list[str] = []
+    """Environment variables to propagate to the environment.
+    This is useful if you want to propagate API keys or similar from your own environment to the
+    environment in which the tools run.
+    IMPORTANT NOTE: The value of the environment variables can be read in debug log files,
+    so be careful with your API keys!
+    """
+
+    env_variables: dict[str, Any] = {
+        "PAGER": "cat",
+        "MANPAGER": "cat",
+        "LESS": "-R",
+        "PIP_PROGRESS_BAR": "off",
+        "TQDM_DISABLE": "1",
+        "GIT_PAGER": "cat",
+    }
     """Shorthand to set environment variables for the tools, effectively
     equivalent to adding `export VARNAME=value` to the `reset_commands`.
     """
@@ -69,15 +107,23 @@ class ToolConfig(BaseModel):
     """Populate the registry with these variables. Will be written out as json in the registry file."""
 
     submit_command: str = "submit"
+    """The command/tool to use to submit the solution."""
 
     parse_function: ParseFunction = Field(default_factory=FunctionCallingParser)
+    """The action parser that is responsible for parsing the model output into a thought and action.
+    """
 
     enable_bash_tool: bool = True
+    """Whether to enable the bash tool in addition to the other tools specified in bundles."""
 
     format_error_template: str = None  # type: ignore
     """Defaults to format_error_template in ParseFunction"""
 
     command_docs: str = None  # type: ignore
+    """Automatically generated documentation generated based on
+    the loaded tool bundles.
+    """
+
     multi_line_command_endings: dict[str, str] = {}
     submit_command_end_name: str | None = None
 
@@ -111,6 +157,10 @@ class ToolConfig(BaseModel):
 
     @cached_property
     def state_commands(self) -> list[str]:
+        """This property returns the state commands from all bundles.
+        State commands are commands that are used to get the state of the environment
+        (e.g., the current working directory).
+        """
         return [bundle.state_command for bundle in self.bundles if bundle.state_command]
 
     # todo: move to ToolHandler?
@@ -205,7 +255,10 @@ class ToolHandler:
 
     def reset(self, env: SWEEnv) -> None:
         self.logger.info("Resetting tools")
-        env.set_env_variables(self.config.env_variables)
+        env_variables = self.config.env_variables.copy() | {
+            var: os.getenv(var) for var in self.config.propagate_env_variables
+        }
+        env.set_env_variables(env_variables)
         env.write_file("/root/.swe-agent-env", json.dumps(self.config.registry_variables))
         env.write_file("/root/state.json", "{}")
         env.communicate(" && ".join(self._reset_commands), check="raise", timeout=self.config.install_timeout)

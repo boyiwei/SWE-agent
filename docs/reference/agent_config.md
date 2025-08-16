@@ -9,7 +9,7 @@ It might be easiest to simply look at some of our example configurations in the 
 <summary>Example: default config <code>default.yaml</code></summary>
 
 ```yaml
---8<-- "config/default_from_url.yaml"
+--8<-- "config/default.yaml"
 ```
 </details>
 

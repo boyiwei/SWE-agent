@@ -16,8 +16,8 @@ sweagent run-batch \\
     --instances.split dev  \\
     --instances.slice :50 \\     # first 50 instances
     --instances.shuffle=True \\  # shuffle instances (with fixed seed)
-    --config config/default.yaml \\  # configure model
-    --agent.model.name gpt-4o
+    --config config/default.yaml \\
+    --agent.model.name gpt-4o  # configure model
 [/green]
 
 [cyan][bold]=== LOADING INSTANCES ===[/bold][/cyan]
@@ -299,8 +299,10 @@ class RunBatch:
 
         self._progress_manager.on_instance_start(instance.problem_statement.id)
 
-        if self.should_skip(instance):
-            self._progress_manager.on_instance_end(instance.problem_statement.id, exit_status="skipped")
+        if previous_exit_status := self.should_skip(instance):
+            self._progress_manager.on_instance_end(
+                instance.problem_statement.id, exit_status=f"skipped ({previous_exit_status})"
+            )
             self._remove_instance_log_file_handlers(instance.problem_statement.id)
             return
 
@@ -372,8 +374,10 @@ class RunBatch:
         self._chooks.on_instance_completed(result=result)
         return result
 
-    def should_skip(self, instance: BatchInstance) -> bool:
-        """Check if we should skip this instance"""
+    def should_skip(self, instance: BatchInstance) -> bool | str:
+        """Check if we should skip this instance.
+        Returns previous exit status if the instance should be skipped.
+        """
         if self._redo_existing:
             return False
 
@@ -403,7 +407,7 @@ class RunBatch:
             return False
         # otherwise, we will skip it
         self.logger.info(f"⏭️ Skipping existing trajectory: {log_path}")
-        return True
+        return exit_status
 
     def _add_instance_log_file_handlers(self, instance_id: str, multi_worker: bool = False) -> None:
         filename_template = f"{instance_id}.{{level}}.log"

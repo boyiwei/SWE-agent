@@ -8,20 +8,25 @@
       Benchmarking SWE-agent is covered [separately](batch_mode.md).
       Finally, we have a different tutorial for using SWE-agent for [coding challenges](coding_challenges.md).
 
+!!! tip "Mini-SWE-Agent"
+
+    Looking for a simple, no-fuzz version of SWE-agent that can also help you in your daily work?
+    Check out [Mini-SWE-Agent](https://mini-swe-agent.com/)!
+
 ## A few examples
 
 Before we start with a more structured explanation of the command line options, here are a few examples that you might find immediately useful:
 
 ```bash title="Fix a github issue"
-python run.py \
-  --agent.model.name=gpt4 \
+sweagent run \
+  --agent.model.name=gpt-4o \
   --agent.model.per_instance_cost_limit=2.00 \
   --env.repo.github_url=https://github.com/SWE-agent/test-repo \
   --problem_statement.github_url=https://github.com/SWE-agent/test-repo/issues/1
 ```
 
 ```bash title="Work on a github repo with a custom problem statement" hl_lines="4"
-python run.py \
+sweagent run \
   ...
   --env.repo.github_url=https://github.com/SWE-agent/test-repo \
   --problem_statement.text="Hey, can you fix all the bugs?"
@@ -29,8 +34,8 @@ python run.py \
 
 ```bash title="Fix a bug in a local repository using a custom docker image" hl_lines="4 5 6"
 git clone https://github.com/SWE-agent/test-repo.git
-python run.py \
-  --agent.model.name=claude-3.5 \
+sweagent run \
+  --agent.model.name=claude-sonnet-4-20250514 \
   --env.repo.path=test-repo \
   --problem_statement.path=test-repo/problem_statements/1.md \
   --env.deployment.image=python:3.12
@@ -44,14 +49,14 @@ For the next example, we will use a cloud-based execution environment instead of
 For this, you first need to set up a modal account, install the necessary extra dependencies `pip install 'swe-rex[modal]'`, then run:
 
 ```bash title="Deployment on modal (cloud-based execution)" hl_lines="3"
-python run.py \
+sweagent run \
   ...
   --env.deployment.type=modal \
   --env.deployment.image=python:3.12
 ```
 
 !!! tip "All options"
-    Run `python run.py --help` to see all available options for `run.py`. This tutorial will only cover a subset of options.
+    Run `sweagent run --help` to see all available options for `run.py`. This tutorial will only cover a subset of options.
 
 ## Configuration files
 
@@ -60,7 +65,7 @@ All configuration options can be specified either in one or more `.yaml` files, 
 === "Command line"
 
     ```bash
-    python run.py --config my_run.yaml
+    sweagent run --config my_run.yaml
     ```
 
 === "Configuration file"
@@ -68,7 +73,7 @@ All configuration options can be specified either in one or more `.yaml` files, 
     ```yaml title="my_run.yaml"
     agent:
       model:
-        name: gpt4
+        name: gpt-4o
         per_instance_cost_limit: 2.00
     env:
       repo:
@@ -82,7 +87,8 @@ But we can also split it up into multiple files and additional command line opti
 === "Command line"
 
     ```bash
-    python run.py --config agent.yaml --config env.yaml \
+    # Note that you need --config in front of every config file
+    sweagent run --config agent.yaml --config env.yaml \
         --problem_statement.text="Hey, can you fix all the bugs?"
     ```
 
@@ -91,7 +97,7 @@ But we can also split it up into multiple files and additional command line opti
     ```yaml title="agent.yaml"
     agent:
       model:
-        name: gpt4
+        name: gpt-4o
         per_instance_cost_limit: 2.00
     ```
 
@@ -103,13 +109,19 @@ But we can also split it up into multiple files and additional command line opti
         github_url: https://github.com/SWE-agent/test-repo
     ```
 
+!!! warning "Multiple config files"
+    Prior to version SWE-agent 1.1.0, configs were merged with simple dictionary updates,
+    rather than a hierarchical merge, so specifying `agent` (or any key with subkeys) in the
+    second config would completely overwrite all `agent` settings of the first config.
+    This is fixed since SWE-agent 1.1.0.
+
 The default config file is `config/default.yaml`. Let's take a look at it:
 
 <details>
 <summary>Example: default config <code>default.yaml</code></summary>
 
 ```yaml
---8<-- "config/default_from_url.yaml"
+--8<-- "config/default.yaml"
 ```
 </details>
 
@@ -207,7 +219,7 @@ In addition, you can also execute additional commands before starting the agent 
 
 ```bash
 sweagent run \
-    --agent.model.name=claude-3-5-sonnet-20241022 \
+    --agent.model.name=claude-3-7-sonnet-latest \
     --env.post_startup_commands='["pip install flake8"]' \
     ...
 ```

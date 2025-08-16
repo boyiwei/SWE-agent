@@ -74,7 +74,7 @@ class SWEEnv:
         self.repo = repo
         self._post_startup_commands = post_startup_commands
         self.post_startup_command_timeout = post_startup_command_timeout
-        self.logger = get_logger("swea-env", emoji="���")
+        self.logger = get_logger("swea-env", emoji="🪴")
         self.name = name
         self.clean_multi_line_functions = lambda x: x
         self._chook = CombinedEnvHooks()
@@ -149,12 +149,14 @@ class SWEEnv:
     def _reset_repository(self) -> None:
         """Clean repository of any modifications + Checkout base commit"""
         if self.repo is not None:
+            self.logger.debug("Resetting repository %s to commit %s", self.repo.repo_name, self.repo.base_commit)
+            # todo: Currently has swe-ft specific change: The original repo.copy isn't called, because the repo is already
+            # present. However, reset --hard <BRANCH> also doesn't work. So modified it here to do a checkout instead.
             startup_commands = [
                 f"cd /{self.repo.repo_name}",
                 "export ROOT=$(pwd -P)",
+                *self.repo.get_reset_commands(),
             ]
-            self.logger.debug("Resetting repository %s to commit %s", self.repo.repo_name, self.repo.base_commit)
-            startup_commands.extend(self.repo.get_reset_commands())
             self.communicate(
                 input=" && ".join(startup_commands),
                 check="raise",
@@ -179,8 +181,12 @@ class SWEEnv:
         """
         self._chook.on_start_deployment()
         asyncio.run(self.deployment.start())
-        asyncio.run(self.deployment.runtime.create_session(CreateBashSessionRequest(startup_source=["/root/.bashrc"])))
-        self.set_env_variables({"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"})
+        asyncio.run(
+            self.deployment.runtime.create_session(
+                CreateBashSessionRequest(startup_source=["/root/.bashrc"], startup_timeout=10)
+            )
+        )
+        self.set_env_variables({"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PIP_PROGRESS_BAR": "off", "PAGER": "cat"})
         self.logger.info("Environment Initialized")
 
     def interrupt_session(self):

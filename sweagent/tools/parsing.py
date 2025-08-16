@@ -12,6 +12,8 @@ ls -l
  ```
 ```
 
+For models that support function calling, we instead recommend using the `FunctionCallingParser`.
+
 To use a specific parser, set the `parse_function` key in your tool config to the `type` field of the parser.
 
 ```yaml
@@ -22,7 +24,13 @@ agent:
             type: "thought_action"
 ```
 
-Or from the command line: `--agent.tools.parse_function.type=thought_action`
+Or from the command line: `--agent.tools.parse_function.type=thought_action`.
+
+!!! note "Describing available tools"
+    If you do not use the `FunctionCallingParser`, you need to include documentation about the available tools
+    in your system prompt. You can use the `{{command_docs}}` variable to include the automatically generated
+    documentation or explicitly describe the available tools.
+    Also see [#1130](https://github.com/SWE-agent/SWE-agent/issues/1130).
 """
 
 import json
@@ -31,7 +39,7 @@ import textwrap
 from abc import ABC, abstractmethod
 from shlex import quote
 from textwrap import dedent
-from typing import Literal
+from typing import Any, Literal
 
 from jinja2 import Template
 from pydantic import BaseModel
@@ -210,6 +218,109 @@ class XMLThoughtActionParser(AbstractParseFunction, BaseModel):
         return thought.strip(), action.strip()
 
 
+FN_REGEX_PATTERN = r"<function=([^>]+)>\n(.*?)</function>"
+FN_PARAM_REGEX_PATTERN = r"<parameter=([^>]+)>(.*?)</parameter>"
+
+
+class XMLFunctionCallingParser(AbstractParseFunction, BaseModel):
+    """
+    Expects the model response to be a tool calling format, where the command and parameters are specified
+    in XML tags.
+    Example:
+    Let's look at the files in the current directory.
+    <function=bash>
+    <parameter=command>find /testbed -type f -name "_discovery.py"</parameter>
+    </function>
+    """
+
+    error_message: str = dedent("""\
+    {%- if error_code == "missing" -%}
+    Your last output did not use any tool calls!
+    Please make sure your output includes exactly _ONE_ function call!
+    If you think you have already resolved the issue, please submit your changes by running the `submit` command.
+    If you think you cannot solve the problem, please run `submit`.
+    Else, please continue with a new tool call!
+    {%- elif error_code == "multiple" -%}
+    Your last output included multiple tool calls!
+    Please make sure your output includes a thought and exactly _ONE_ function call.
+    {%- elif error_code == "unexpected_arg" -%}
+    Your action could not be parsed properly: {{exception_message}}.
+    Make sure your function call doesn't include any extra arguments that are not in the allowed arguments, and only use the allowed commands.
+    {%- else -%}
+    Your action could not be parsed properly: {{exception_message}}.
+    {% endif %}
+    """)
+
+    type: Literal["xml_function_calling"] = "xml_function_calling"
+
+    def __call__(self, model_response: dict, commands: list[Command], strict=False) -> tuple[str, str]:
+        fn_match = re.search(FN_REGEX_PATTERN, model_response["message"], re.DOTALL)
+        if not fn_match:
+            msg = "No function found in model response."
+            raise FormatError(msg)
+        fn_name = fn_match.group(1).strip()
+
+        # Handle different names in SWE-agent vs. SWE-gym
+        if fn_name == "execute_bash":
+            fn_name = "bash"
+        if fn_name == "finish":
+            fn_name = "submit"
+
+        fn_body = fn_match.group(2)
+        thought = model_response["message"][: fn_match.start()] + model_response["message"][fn_match.end() :]
+        thought = thought.strip()
+
+        commands_dict = {c.name: c for c in commands}
+        command = commands_dict.get(fn_name)
+        if not command:
+            msg = f"Command '{fn_name}' not found in list of available commands."
+            raise FormatError(msg)
+
+        params_dict = {
+            param[0]: re.sub(r"^\n|\n$", "", param[1])
+            for param in re.findall(FN_PARAM_REGEX_PATTERN, fn_body, re.DOTALL)
+        }
+
+        if "view_range" in params_dict:
+            # Check that value is format as [x, y]
+            v = params_dict["view_range"]
+            if isinstance(v, str):
+                if not re.match(r"\[\d+,\s*\d+\]", v):
+                    msg = f"view_range must be in the format [<start>, <end>], got {v}."
+                    raise FormatError(msg)
+                params_dict["view_range"] = json.loads(v)
+
+        # Check if all required arguments are there
+        required_args = {arg.name for arg in command.arguments if arg.required}
+        missing_args = required_args - params_dict.keys()
+        if missing_args:
+            msg = f"Required argument(s) missing: {', '.join(missing_args)}"
+            raise FormatError(msg)
+
+        # Check if all arguments are valid
+        valid_args = {arg.name for arg in command.arguments}
+        extra_args = set(params_dict.keys()) - valid_args
+        if command.end_name:
+            # sometimes the model will include the end_name in the arguments - just ignore it
+            extra_args.discard(command.end_name)
+        if extra_args:
+            msg = f"Unexpected argument(s): {', '.join(extra_args)}"
+            raise FormatError(msg)
+
+        # Format arguments using their individual argument_format
+        formatted_args = {
+            arg.name: Template(arg.argument_format).render(
+                value=quote(params_dict[arg.name])
+                if _should_quote(params_dict[arg.name], command)
+                else params_dict[arg.name]
+            )
+            if arg.name in params_dict
+            else ""
+            for arg in command.arguments
+        }
+        return thought, command.invoke_format.format(**formatted_args).strip()
+
+
 class EditFormat(ThoughtActionParser, BaseModel):
     """
     Expects the model response to be a discussion followed by a command wrapped in backticks.
@@ -308,10 +419,17 @@ class FunctionCallingParser(AbstractParseFunction, BaseModel):
         if extra_args:
             msg = f"Unexpected argument(s): {', '.join(extra_args)}"
             raise FunctionCallingFormatError(msg, "unexpected_arg")
+
+        def get_quoted_arg(value: Any) -> str:
+            if isinstance(value, str):
+                return quote(value) if _should_quote(value, command) else value
+            # See https://github.com/SWE-agent/SWE-agent/issues/1159
+            if value is None:
+                return ""
+            return value
+
         formatted_args = {
-            arg.name: Template(arg.argument_format).render(
-                value=quote(values[arg.name]) if _should_quote(values[arg.name], command) else values[arg.name]
-            )
+            arg.name: Template(arg.argument_format).render(value=get_quoted_arg(values[arg.name]))
             if arg.name in values
             else ""
             for arg in command.arguments
@@ -420,13 +538,82 @@ class JsonParser(AbstractParseFunction, BaseModel):
             raise FormatError(msg)
 
 
+class BashCodeBlockParser(AbstractParseFunction, BaseModel):
+    """Executes all commands in ```bash code blocks."""
+
+    error_message: str = dedent("""\
+    No bash code blocks were detected in your output.
+    You need to include at least one bash code block in your output.
+
+    It must follow this format exactly to be valid:
+    ```bash
+    cmd arg1 arg2 ...
+    ...
+
+    Other types of code blocks (e.g. python, rust, none, etc.) won't be executed. Only bash.
+    """)
+
+    type: Literal["all_bash_code_blocks"] = "all_bash_code_blocks"
+
+    def __call__(self, model_response: dict, commands: list[Command], strict=False):
+        """Parses the action from the output of the API call.
+        We assume that model output is a JSON object with the following fields:
+        """
+        pattern = re.compile(r"```bash\n(.*?)\n```", re.DOTALL)
+        matches = pattern.findall(model_response["message"])
+        if not matches:
+            msg = "No bash code blocks were detected in your output."
+            raise FormatError(msg)
+        thouht = pattern.sub("<extracted_code_block>", model_response["message"])
+        action = "\n".join(matches)
+        return thouht, action
+
+
+class SingleBashCodeBlockParser(AbstractParseFunction, BaseModel):
+    """Executes all commands in ```bash code blocks."""
+
+    error_message: str = dedent("""\
+    We did not detect the right number of bash code blocks in your output.
+    You need to include EXACTLY ONE bash code block in your output.
+
+    It must follow this format exactly to be valid:
+    ```bash
+    cmd arg1 arg2 ...
+    ```
+    """)
+
+    type: Literal["single_bash_code_block"] = "single_bash_code_block"
+
+    def __call__(self, model_response: dict, commands: list[Command], strict=False):
+        """Parses the action from the output of the API call.
+        We assume that model output is a JSON object with the following fields:
+        """
+        pattern = re.compile(r"```bash\n(.*?)\n```", re.DOTALL)
+        matches = pattern.findall(model_response["message"])
+        if not matches:
+            msg = "No bash code blocks were detected in your output."
+            raise FormatError(msg)
+        if len(matches) > 1:
+            msg = (
+                "We detected multiple bash code blocks in your output. "
+                "You need to include EXACTLY ONE bash code block in your output."
+            )
+            raise FormatError(msg)
+        thouht = pattern.sub("<extracted_code_block>", model_response["message"])
+        action = "\n".join(matches)
+        return thouht, action
+
+
 ParseFunction = (
     ActionParser
     | ThoughtActionParser
     | ActionOnlyParser
     | XMLThoughtActionParser
+    | XMLFunctionCallingParser
     | FunctionCallingParser
     | EditFormat
     | Identity
     | JsonParser
+    | BashCodeBlockParser
+    | SingleBashCodeBlockParser
 )
