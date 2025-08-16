@@ -80,7 +80,8 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
                     # For direct Anthropic
                     completion_kwargs['reasoning_effort'] = kwargs['agent.model.reasoning_effort']
                     print(f"Setting reasoning_effort to {kwargs['agent.model.reasoning_effort']} for model {model_name}")
-        
+            if ("claude-opus-4" in kwargs['agent.model.name']):
+                completion_kwargs['top_p'] = None
         # Call the original function
         return original_completion(*args, **completion_kwargs)
     
@@ -105,6 +106,8 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
                     # For direct Anthropic
                     completion_kwargs['reasoning_effort'] = kwargs['agent.model.reasoning_effort']
                     print(f"Setting reasoning_effort to {kwargs['agent.model.reasoning_effort']} for model {args['agent.model.name']}")
+            if ("claude-opus-4" in kwargs['agent.model.name']): # TODO(WIP): Verify if all the claude reasoning models need this
+                completion_kwargs['top_p'] = None
         return await original_acompletion(*args, **completion_kwargs)
     
     # Replace both sync and async completion functions
