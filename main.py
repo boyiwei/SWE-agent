@@ -80,8 +80,8 @@ def run(input: dict[str, dict], **kwargs) -> dict[str, str]:
                     # For direct Anthropic
                     completion_kwargs['reasoning_effort'] = kwargs['agent.model.reasoning_effort']
                     print(f"Setting reasoning_effort to {kwargs['agent.model.reasoning_effort']} for model {model_name}")
-            if ("claude-opus-4" in kwargs['agent.model.name']):
-                completion_kwargs['top_p'] = None
+            if ("claude-opus-4" in kwargs['agent.model.name'] or "claude-sonnet-4" in kwargs['agent.model.name']):
+                completion_kwargs['top_p'] = None # anthropic prohibits passing top_p for reasoning calls, for claude-4, both reasoning and non-reasoning calls does not accept specifying both top_p and temperature
         # Call the original function
         return original_completion(*args, **completion_kwargs)
     
